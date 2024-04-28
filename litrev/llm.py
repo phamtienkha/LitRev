@@ -1,9 +1,11 @@
 import torch
-from .query import get_summaries
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import os
+from .query import search_rank
 from dotenv import load_dotenv
 from .const import API_MODELS
+from .utils import generate_response_api
+from aslite.db import get_papers_db
+import math 
+
 load_dotenv()  # Loads from '.env' file 
 
 def generate_response(q,
@@ -17,20 +19,20 @@ def generate_response(q,
     summaries = get_summaries(q, top_k=k_search)
     print(f'There are {len(summaries)} papers found for your query: {q}\n')
 
-    INSTRUCTION = """\n\nLet's think step by step. Imagine you are writing a survey paper.
+    INSTRUCTION = f"""\n\nLet's think step by step. Imagine you are writing a survey paper.
             You must mention all the papers in the summaries above, and summarize its contributions in 3-4 sentences for each paper.
-            The format for each paper should be as follows:
-                - Problem: What is the main problem addressed in the paper? Be as detailed as possible about the problem.
-                - Contribution: What is the main contribution of tda actihe paper?
-                - Limitation: What is possible limitation?
+            The format for each paper should be in four bullets as follows:
+                - Paper ID: What is the ID of the paper? (e.g., Paper 2103.12345)
+                - Problem: What is the main problem addressed in the paper? How this problem is related to {q}. Answer in two to three sentences.
+                - Contribution: What is the main contribution of tda actihe paper? Answer in one line.
+                - Limitation: What is possible limitation? Answer in one line.
             Remember to mention the paper when you refer to its content. You can mention the papers in an arbitrary order, as long as the flow is smooth.
             """
 
     # API models
     if model_path in API_MODELS:
-        assert len(summaries) % 10 == 0, 'Number of papers must be divisible by 10'
         responses = ''
-        for i in range(len(summaries)//10):
+        for i in range(math.ceil(len(summaries)/10)):
             prompt = '\n'.join(summaries[i*10:(i+1)*10])
             prompt += INSTRUCTION
             response = generate_response_api(model=model, 
@@ -73,80 +75,12 @@ def generate_response(q,
                 output = tokenizer.decode(output_ids_cur, skip_special_tokens=True)
                 outputs.append(output)
         return outputs
+
+def get_summaries(q, top_k=3):
+    pdb = get_papers_db()
+    pids, _ = search_rank(q)
+    summaries = []
+    for pid in pids[:top_k]:
+        summaries.append(f'Paper {pid}: ' + pdb[pid]["summary"])
+    return summaries
     
-    
-def generate_response_api(model, model_path, prompt):
-    if model_path == 'gemini':
-        response = model.generate_content(prompt).text
-    elif 'gpt' in model_path:
-        if model_path == 'gpt3.5':
-            gpt_version = "gpt-3.5-turbo"
-        elif model_path == 'gpt4':
-            gpt_version = "gpt-4-turbo"
-        else:
-            raise ValueError('Invalid model. Choose from (gpt3.5, gpt4).')
-        completion = model.chat.completions.create(
-                        model=gpt_version,
-                        messages=[
-                            {"role": "system", "content": "You are researcher writing a survey paper."},
-                            {"role": "user", "content": prompt}
-                        ]
-                        )
-        response = completion.choices[0].message.content
-    elif 'claude' in model_path:
-        if model_path == 'claude-haiku':
-            claude_version = 'claude-3-haiku-20240307'
-        elif model_path == 'claude-sonnet':
-            claude_version = 'claude-3-sonnet-20240229'
-        else:
-            raise ValueError('Invalid model. Choose from (claude-haiku, claude-sonnet).')
-        message = model.messages.create(
-                        model=claude_version,
-                        max_tokens=2048,
-                        temperature=0.3,
-                        system="You are researcher writing a survey paper.",
-                        messages=[
-                            {"role": "user", "content": prompt}
-                        ]
-                    )
-        response = message.content[0].text
-    else:
-        raise ValueError(f'Invalid model. Choose from {API_MODELS}.')
-    return response
-
-    
-def load_model_tokenizer(model_path='gemini'):
-    # Gemini model
-    if model_path == 'gemini':
-        import google.generativeai as genai
-
-        GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
-        genai.configure(api_key=GOOGLE_API_KEY)
-        model = genai.GenerativeModel('gemini-pro')
-        tokenizer = None
-
-    # OpenAI models
-    elif model_path == 'gpt3.5' or model_path == 'gpt4':
-        from openai import OpenAI
-
-        model = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-        tokenizer = None
-
-    # Claude models
-    elif 'claude' in model_path:
-        import anthropic
-
-        model = anthropic.Anthropic(
-            api_key=os.getenv('ANTHROPIC_API_KEY'),
-        )
-        tokenizer = None
-    
-    # Local models
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(model_path, 
-                                                device_map="auto",
-                                                trust_remote_code=True)
-        model = AutoModelForCausalLM.from_pretrained(model_path, 
-                                                    device_map="auto", 
-                                                    trust_remote_code=True)
-    return model, tokenizer

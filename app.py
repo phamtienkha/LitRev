@@ -1,6 +1,7 @@
 import asyncio
 from litrev.const import HELLO_MSG, API_MODELS
-from litrev.llm import generate_response, load_model_tokenizer
+from litrev.llm import generate_response
+from litrev.utils import load_model_tokenizer
 from litrev.response import summarize_probs
 
 # Create a new event loop
@@ -19,7 +20,7 @@ st.set_page_config(page_title="Literature Review Chatbot", page_icon=":robot:")
 # Sidebar
 with st.sidebar:
     st.title('Literature Review Chatbot')
-    k_search = st.sidebar.slider('#papers', min_value=10, max_value=200, value=30, step=10)
+    k_search = st.sidebar.slider('#papers', min_value=10, max_value=100, value=30, step=10)
     model_probs = st.sidebar.selectbox('Choose a model', API_MODELS, key='model_probs', index=4)
 
 # Store LLM generated responses
@@ -59,7 +60,7 @@ def get_response(prompt_input):
     return probs
 
 # User-provided prompt
-if user_input := st.chat_input(disabled=False, placeholder="Search for literature review"):
+if user_input := st.chat_input(disabled=False, placeholder="Search for a research topic"):
     st.session_state.messages.append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.write(user_input)

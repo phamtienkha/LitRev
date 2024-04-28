@@ -8,3 +8,4 @@ streamlit
 sentence-transformers
 transformers
 pandas
+python-dotenv
