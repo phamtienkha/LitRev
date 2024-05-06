@@ -2,7 +2,7 @@ import asyncio
 from litrev.const import HELLO_MSG, API_MODELS
 from litrev.llm import generate_response
 from litrev.utils import load_model_tokenizer
-from litrev.response import summarize_probs
+from litrev.response import summarize_content
 
 # Create a new event loop
 loop = asyncio.new_event_loop()
@@ -12,7 +12,7 @@ asyncio.set_event_loop(loop)
 
 import streamlit as st
 
-model_gemini, _ = load_model_tokenizer(model_path='gemini')
+model_gemini_1, _ = load_model_tokenizer(model_path='gemini-1')
 
 # App title
 st.set_page_config(page_title="Literature Review Chatbot", page_icon=":robot:")
@@ -21,7 +21,7 @@ st.set_page_config(page_title="Literature Review Chatbot", page_icon=":robot:")
 with st.sidebar:
     st.title('Literature Review Chatbot')
     k_search = st.sidebar.slider('#papers', min_value=10, max_value=100, value=30, step=10)
-    model_probs = st.sidebar.selectbox('Choose a model', API_MODELS, key='model_probs', index=4)
+    model_probs = st.sidebar.selectbox('Choose a model', API_MODELS, key='model_probs', index=3)
 
 # Store LLM generated responses
 if "messages" not in st.session_state.keys():
@@ -50,13 +50,15 @@ def get_response(prompt_input):
 
     # prompt = build_prompt(prompt_input, context=string_dialogue)
     response = generate_response(q=prompt_input, 
-                                 model=model_gemini, 
-                                 model_path='gemini',
+                                 model=model_gemini_1, 
+                                 model_path='gemini-1',
                                  tokenizer=None, 
                                  k_search=k_search)
-    probs = summarize_probs(response=response,
-                            model=model,
-                            model_path=model_probs)
+    probs = summarize_content(response=response,
+                              q=prompt_input, 
+                              model=model,
+                              model_path=model_probs, 
+                              max_new_tokens=4096)
     return probs
 
 # User-provided prompt

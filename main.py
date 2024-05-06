@@ -1,6 +1,6 @@
 import argparse
 from litrev.llm import generate_response, load_model_tokenizer
-from litrev.response import summarize_probs
+from litrev.response import summarize_content
 
 if __name__ == "__main__":
     # argparse
@@ -18,7 +18,7 @@ if __name__ == "__main__":
                                 model_path='gemini',
                                 tokenizer=None, 
                                 k_search=args.k_search)
-    probs = summarize_probs(response=response,
+    probs = summarize_content(response=response,
                             model=model,
                             model_path=args.model_path)
     print(probs)

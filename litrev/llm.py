@@ -1,10 +1,11 @@
 import torch
 from .query import search_rank
 from dotenv import load_dotenv
-from .const import API_MODELS
-from .utils import generate_response_api
+from .const import API_MODELS, NO_PAPER_RESPONSE
+from .utils import generate_response_api, detect_arxiv_id
 from aslite.db import get_papers_db
-import math 
+import math
+import random
 
 load_dotenv()  # Loads from '.env' file 
 
@@ -18,27 +19,38 @@ def generate_response(q,
                       batch_size=1):
     summaries = get_summaries(q, top_k=k_search)
     print(f'There are {len(summaries)} papers found for your query: {q}\n')
+    if len(summaries) == 0:
+        return NO_PAPER_RESPONSE
 
-    INSTRUCTION = f"""\n\nLet's think step by step. Imagine you are writing a survey paper.
-            You must mention all the papers in the summaries above, and summarize its contributions in 3-4 sentences for each paper.
-            The format for each paper should be in four bullets as follows:
-                - Paper ID: What is the ID of the paper? (e.g., Paper 2103.12345)
-                - Problem: What is the main problem addressed in the paper? How this problem is related to {q}. Answer in two to three sentences.
-                - Contribution: What is the main contribution of tda actihe paper? Answer in one line.
-                - Limitation: What is possible limitation? Answer in one line.
-            Remember to mention the paper when you refer to its content. You can mention the papers in an arbitrary order, as long as the flow is smooth.
+    INSTRUCTION = f"""\n\nImagine you are writing a survey paper.
+            You must mention all the papers in the summaries above. 
+            Each paper is written in a single paragraph. You must mention the paper ID first, in bold with normal size in markdown. There is no bullet on the line of paper ID. For example: "**Paper 2012.05616**", not "**-Paper 2012.05616**". 
+            Then, in the same paragraph, mention the research problem of the paper, and highlight the main contributions of the paper.
+
+            Example: "**Paper 0000.11111** studies the problem of X. The main contributions of the paper are A, B, and C (write in the same paragraph, no bullets).
+            
+            **Paper 0000.22222** studies the problem of Y. It proposes the method of...
+
+            ...
+            "
+
+            Follow the example, but you don't need to use the same wording. Be creative and diverse in your writing, but still accurate and informative. Avoid using "this paper" and bullets. Just use the paper ids as the subjects of the sentences.
             """
 
     # API models
     if model_path in API_MODELS:
         responses = ''
         for i in range(math.ceil(len(summaries)/10)):
-            prompt = '\n'.join(summaries[i*10:(i+1)*10])
+            prompt = '\n\n'.join(summaries[i*10:(i+1)*10])
             prompt += INSTRUCTION
             response = generate_response_api(model=model, 
-                                        model_path=model_path,
-                                        prompt=prompt)
-            responses += response + '\n'
+                                             model_path=model_path,
+                                             prompt=prompt, 
+                                             max_new_tokens=max_new_tokens
+                                             )
+            # Refine the response to remove hallucinated papers
+            response = refine_llm_response(response, summaries)
+            responses += response + '\n\n'
         return responses
     
     # Local models
@@ -76,11 +88,30 @@ def generate_response(q,
                 outputs.append(output)
         return outputs
 
-def get_summaries(q, top_k=3):
+def get_summaries(q, top_k=30):
+    # Search for papers
     pdb = get_papers_db()
     pids, _ = search_rank(q)
+    top_pids = pids[:top_k]
+    
+    # Shuffle the top_pids
+    top_pids = list(set(top_pids))
+    random.seed(1234)
+    random.shuffle(top_pids)
+
+    # Get summaries
     summaries = []
-    for pid in pids[:top_k]:
+    for pid in top_pids:
         summaries.append(f'Paper {pid}: ' + pdb[pid]["summary"])
     return summaries
+
+def refine_llm_response(response, summaries):
+    lines = response.strip().split('\n\n')
+    refined_response = ''
+    for line in lines:
+        arxiv_id = detect_arxiv_id(line)[0]
+        exists = [arxiv_id in summary for summary in summaries]
+        if any(exists):
+            refined_response += line + '\n\n'
+    return refined_response
     

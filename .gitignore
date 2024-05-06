@@ -5,3 +5,4 @@ data
 *.ipynb
 secret_key.txt
 .env
+test.py
