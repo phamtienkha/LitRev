@@ -1,47 +1,84 @@
-from .utils import load_model_tokenizer, generate_response_api, detect_arxiv_id
+from .utils import detect_arxiv_id, preprocess_text
 from aslite.db import get_papers_db
+from pprint import pprint
+from sklearn.cluster import KMeans
+from sentence_transformers import SentenceTransformer
+import numpy as np
+import random
 
-def cluster_papers(response, model_path='claude-sonnet'):
-    num_ids = len(detect_arxiv_id(response))
-    titles = get_titles(response)
-    prompt = f"""Given the following paper titles:
-    "{titles}"
+def cluster_papers_embedding(response):
+    contents = get_content(response)
+    if len(contents.keys()) <= 3:
+        return {0: list(contents.keys())}
+    CONTENT_LIST = [item.replace('\n', '') for item in list(contents.values())]
+    NUM_CLUSTER_MIN = 3
 
-    Cluster the papers based on research ideas or research questions into {num_ids//10}-{num_ids//5} clusters. Follows these guidelines:
-    - The cluster sizes should be balanced in average.
-    - Include ALL {num_ids} paper ids given in the above passage.
-    - Each cluster should have a clear theme or topic.
-    - Within a cluster, more related papers are placed closer to each other.
+    # Sentence encocoding
+    model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+
+    # Find best number of clusters for KMeans
+    # Run KMeans multiple times and get the most common elbow index to ensure stability
+    elbow_indices = {}
+    indices = list(range(len(contents)))
+    for _ in range(100):
+        random.shuffle(indices)
+        content_list = [CONTENT_LIST[i] for i in indices]
+
+        X = model.encode(content_list)
+        inertia = []
+        for k in range(NUM_CLUSTER_MIN, min(15, len(contents.keys())+1)):
+            kmeans = KMeans(n_clusters=k, random_state=28).fit(X)
+            inertia.append(kmeans.inertia_)
+        diff = np.diff(inertia)     # Calculate the difference between consecutive inertia values
+        diff_diff = np.diff(diff)   # Calculate the rate of change of the difference
+        elbow_index = np.argmax(diff_diff) + NUM_CLUSTER_MIN      # Find the index of the maximum rate of change of the difference
+        
+        if elbow_index not in elbow_indices:
+            elbow_indices[elbow_index] = [indices]
+        else:
+            elbow_indices[elbow_index].append(indices)
+
+    # Get the most common elbow index
+    print({i: len(elbow_indices[i]) for i in elbow_indices})
+    elbow_index = max(elbow_indices, key=lambda k: len(elbow_indices[k]))  # Get key with longest values
+
+    # Run KMeans
+    print('Number of clusters:', elbow_index)
+    indices = elbow_indices[elbow_index][0]
+    contents = {list(contents.keys())[i]: list(contents.values())[i] for i in indices}
+    content_list = [preprocess_text(item).replace('\n', '') for item in list(contents.values())] 
+    X = model.encode(content_list)
+    clusters = KMeans(n_clusters=elbow_index, random_state=0).fit_predict(X)
+
+    # Get items of each cluster
+    cluster_items = {}
+    for i, cluster in enumerate(clusters):
+        if cluster not in cluster_items:
+            cluster_items[cluster] = []
+        cluster_items[cluster].append(list(contents.keys())[i])
+    # print(cluster_items)
     
-    Return the paper ids only. The format should be as follows:
-    Cluster 1: [name of Cluster 1]
-    - Paper ID 1
-    - Paper ID 2
-    Cluster 2: [name of Cluster 2]
-    - Paper ID 3
-    - Paper ID 4
-    ...
+    # # Get titles of items in each cluster
+    # cluster_titles = {}
+    # pdb = get_papers_db()
+    # for cluster, items in cluster_items.items():
+    #     cluster_titles[cluster] = [pdb[item]['title'].replace('\n', '') for item in items]
+    # pprint(cluster_titles)
+    # exit()
+    return cluster_items
 
-    No need for any further explanation or introduction.
-    """
-    model, _ = load_model_tokenizer(model_path=model_path)
-
-    response_cluster = generate_response_api(prompt=prompt, model=model, model_path=model_path)
-    clusters = extract_cluster(response_cluster, 
-                               response=response)
-    return clusters
-
-def get_titles(response):
+def get_content(response):
     # Extract arXiv IDs and load paper db
     arxiv_ids = detect_arxiv_id(response)
+    arxiv_ids = sorted(arxiv_ids)   # sort alphabetically
     pdb = get_papers_db()
 
     # Get titles
-    titles = ''
+    contents = {}
     for aid in arxiv_ids:
         if aid in pdb:
-            titles += f"Paper {aid}: {pdb[aid]['title']}\n\n"
-    return titles
+            contents[aid] = f"{pdb[aid]['title']}"
+    return contents
 
 def extract_cluster(response_cluster, response):
     print(response_cluster)
@@ -52,11 +89,12 @@ def extract_cluster(response_cluster, response):
     for line in lines:
         if "Cluster" in line:  # Check if it's a cluster header
             current_cluster = line  # Extract cluster name
-            results[current_cluster] = []
+            results[current_cluster] = {}
         elif line.strip():  # Check for non-empty lines (i.e., paper IDs)
+            topic = line.split(':')[1].strip()
+            results[current_cluster][topic] = []
             arxiv_ids = detect_arxiv_id(line)
             for arxix_id in arxiv_ids:
                 if arxix_id in response:
-                    results[current_cluster].append(arxix_id)
-
+                    results[current_cluster][topic].append(arxix_id)
     return results

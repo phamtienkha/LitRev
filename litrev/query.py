@@ -33,7 +33,7 @@ def search_rank(q: str = ''):
     # search in the database
     pdb = get_papers_db()
     match = lambda s: sum(f" {s} ".lower().count(f" {qp} ") * 1/np.log(imp_w_freqs[qp]+1) for qp in q_words)
-    match2 = lambda s: sum(f" {s} ".lower().count(f" {qp} ") * 1/10 for qp in q_bigrams)
+    match2 = lambda s: sum(f" {s} ".lower().count(f" {qp} ") * 1/5 for qp in q_bigrams)
     pairs = []
     for pid, p in pdb.items():
         score = 0.0

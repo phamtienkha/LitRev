@@ -1,6 +1,6 @@
 from .utils import generate_response_api, detect_arxiv_id, get_survey_prompt, load_model_tokenizer
 from .const import API_MODELS, NO_PAPER_RESPONSE
-from .cluster import cluster_papers
+from .cluster import cluster_papers_embedding
 from pprint import pprint
 
 def summarize_content(response, 
@@ -12,22 +12,26 @@ def summarize_content(response,
         return NO_PAPER_RESPONSE
     
     # Get clusters and cluster responses
-    clusters = cluster_papers(response)
+    clusters = cluster_papers_embedding(response)
     cluster_responses = get_cluster_responses(response, clusters=clusters)
 
     # Refine the cluster responses and generate the main contents of the survey
     main_content = ""
-    for cluster, content in cluster_responses.items():
-        # Extract cluster title
-        cluster_title = cluster.replace('**', '').replace('[', '').replace(']', '').split(':')[1].strip()
-
+    for i in range(len(clusters.keys())):
+        content = cluster_responses[i]
         # Refine the cluster response
-        refined_content = refine_cluster_response(cluster_response=content, 
-                                                  cluster_title=cluster_title,
-                                                  model_path=model_path)
-
+        gen_step = 0
+        while True:
+            cluster_refined_content = refine_response(response=content,
+                                                      model_path=model_path)
+            gen_step += 1
+            if len(set(detect_arxiv_id(cluster_refined_content))) == len(set(detect_arxiv_id(content))):
+                break
+            elif gen_step > 3:
+                break   # break if the response is not refined after 3 steps
+        
         # Generate cluster content
-        cluster_content = f"**{cluster_title}**\n\n{refined_content}\n\n"
+        cluster_content = f"**{i+1}.** {cluster_refined_content}\n\n"
         main_content += cluster_content
     
     # Extract arXiv IDs
@@ -70,7 +74,6 @@ def get_cluster_responses(response, clusters):
     """
 
     # Split the response into individual papers
-    cluster_responses = {}
     paper_contents = response.split('\n\n')
 
     # Extract paper content and store in dictionary
@@ -83,29 +86,31 @@ def get_cluster_responses(response, clusters):
             print(content)
     
     # Generate response for each cluster
-    for cluster, arxiv_ids in clusters.items():
+    cluster_responses = {}
+    for cluster, pids in clusters.items():
         cluster_response = ""
-        for pid in arxiv_ids:
+        for pid in pids:
             cluster_response += papers[pid] + ' '
         cluster_responses[cluster] = cluster_response
     return cluster_responses
 
-def refine_cluster_response(cluster_response, 
-                            cluster_title, 
-                            model_path):
+def refine_response(response,
+                    model_path):
     """
     Refine the cluster response to generate a coherent content.
     """
-    prompt = f"""This section is about {cluster_title}. Use this information, improve the transition between sentences in this paragraph. 
+    prompt = f"""Refine the following paragraph to maintain smooth transitions between sentences in this paragraph. 
     Try to point out key similarities and differences in approaches and findings among these papers.
-    Return the revision only, no need for any further introduction. You can also revise typos and wrong formatting. Don't add words like "revised paragraph" or so. Here is the paragraph:
-{cluster_response}
+    You can also revise typos and wrong formatting. 
+    Here is the paragraph:
+{response}
 
-You can break a long paragraph into 2-3 paragraphs if necessary, but don't break too much. Also note to improve the transition between paragraphs. It's best to point out the similarity of difference between two papers when you transition between them.
+    Your output should be as follows:
+    "**Title of the paragraph (in 4-6 words, be specific and direct; don't use general words like deep learning, machine learning, etc.)**
 
-Remember to bold the paper IDs in the format **Paper 2012.12345** in the revision.
+    The refined paragraph"
 
-**Important**: Don't add any new paper, especially when there is only one paper in the original text.
+    Write in a single paragraph. Don't include sentence like "The refined paragraph...". Remember to bold the paper IDs in the format **Paper 2012.12345** in the revision.
 """
     model, _ = load_model_tokenizer(model_path=model_path)
     if model_path in API_MODELS:
@@ -117,11 +122,6 @@ Remember to bold the paper IDs in the format **Paper 2012.12345** in the revisio
     else:
         refined_response = None
         raise ValueError(f"Invalid model_path. Choose from {API_MODELS}.")
-    
-    # Further refine the response
-    # refined_response = refined_response.replace('\n', '')
-    if ':' in refined_response:
-        refined_response = ' '.join(refined_response.split(':')[1:])
     return refined_response
 
 def extract_intro(text):
