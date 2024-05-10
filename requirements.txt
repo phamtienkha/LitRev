@@ -32,7 +32,6 @@ easybuild-easyblocks==4.4.1
 easybuild-easyconfigs==4.4.1
 easybuild-framework==4.4.1
 exceptiongroup==1.2.0
-faiss==1.8.0
 fastrlock==0.8.2
 feedparser==6.0.10
 filelock==3.13.3
