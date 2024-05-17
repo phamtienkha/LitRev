@@ -122,13 +122,11 @@ def get_papers_db_embedding(pdb, keys=("summary",)):
     if pid_text:
         embed_list = embed_text(pid_text)
         for pid, embd in zip(pid_list, embed_list):
-            to_upsert.append({
+
+            index.upsert(vectors=[{
                 "id": pid,
                 "values": embd
-            })
-
-        index.upsert(vectors=to_upsert,
-                     namespace=namespace)
+            }], namespace=namespace)
 
 if __name__ == "__main__":
     pdb = get_papers_db()
