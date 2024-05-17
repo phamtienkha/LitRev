@@ -104,14 +104,21 @@ def get_papers_db_embedding(pdb, keys=("summary",)):
             #print(pid)
             pid_text.append(to_embed)
 
+    print(len(pid_text), len(pdb))
     if pid_text:
         embed_list = embed_text(pid_text)
+        to_upsert = []
         for pid, embd in zip(pid_list, embed_list):
-
-            index.upsert(vectors=[{
+            to_upsert[-1].append({
                 "id": pid,
                 "values": embd
-            }], namespace=namespace)
+            })
+            if len(to_upsert[-1]) == 1000:
+                to_upsert.append([])
+
+        
+        for vectors in tqdm(to_upsert): 
+            index.upsert(vectors=vectors, namespace=namespace)
 
 if __name__ == "__main__":
     pdb = get_papers_db()
