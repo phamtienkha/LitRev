@@ -33,9 +33,6 @@ def search_rank(q: str = ''):
     # search in the database
     pdb = get_papers_db()
 
-    raise Exception
-
-
     match = lambda s: sum(f" {s} ".lower().count(f" {qp} ") * 1/np.log(imp_w_freqs[qp]+1) for qp in q_words)
     match2 = lambda s: sum(f" {s} ".lower().count(f" {qp} ") * 1/5 for qp in q_bigrams)
     pairs = []

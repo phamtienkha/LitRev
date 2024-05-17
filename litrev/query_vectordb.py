@@ -1,12 +1,16 @@
+import os
+from dotenv import load_dotenv
+
 from aslite.db import get_papers_db
-from aslite.embedding import get_papers_db_embedding
+from aslite.embedding import embed_text
 from .utils import generate_response_api, load_model_tokenizer, preprocess_text, get_bigrams
 import string
 import numpy as np
 from nltk.corpus import wordnet as wn
 import inflect
+from pinecone import Pinecone
 
-def search_rank(q: str = ''): 
+def search_rank(q: str = '', top_k=10): 
     def _all_apear_in(s, q, excludes=[]):
         return all([f" {qp} " in f" {s} " for qp in q if qp not in excludes])
                                                                                                                                                                                                    
@@ -16,39 +20,20 @@ def search_rank(q: str = ''):
     # preprocess the query
     q = shorten(q)
     q = preprocess_text(q)
+    q_embed = embed_text([q])[0]
+
+    pc = Pinecone(api_key=os.getenv("PINECONE_API"))
+    index = pc.Index("litrev")
+    namespace = "summary"
+    queried = index.query(
+        namespace=namespace,
+        vector=q_embed,
+        top_k=top_k,
+    )
     
+    pids = [x["id"] for x in queried]
+    scores = [x["score"] for x in queried]
 
-    # search in the database
-    pdb = get_papers_db()
-    pdb_embeddigns = get_papers_db_embedding(pdb)
-    raise Exception
-
-
-    match = lambda s: sum(f" {s} ".lower().count(f" {qp} ") * 1/np.log(imp_w_freqs[qp]+1) for qp in q_words)
-    match2 = lambda s: sum(f" {s} ".lower().count(f" {qp} ") * 1/5 for qp in q_bigrams)
-    pairs = []
-    for pid, p in pdb.items():
-        score = 0.0
-        title = preprocess_text(p['title'].lower())
-        summary = preprocess_text(p['summary'].lower())
-
-        score += 10.0 * match(' '.join([a['name'].lower() for a in p['authors']]))
-
-        # match the query words
-        score += 20.0 * match(title)
-        score += 1.0 * match(summary)
-
-        # match the bigrams
-        score += 20 * match2(title)
-        score += 2.0 * match2(summary)
-
-        # if the score is positive and all important words appear in the summary
-        if score > 0 and _all_apear_in(' '.join([title, summary]), q_words, excludes=excludes):
-            pairs.append((score, pid))
-
-    pairs.sort(reverse=True)
-    pids = [p[1] for p in pairs]
-    scores = [p[0] for p in pairs]
     return pids, scores
 
 def search_deeplearning(q: str= ''):

@@ -2,6 +2,7 @@ import os
 import pickle
 from dotenv import load_dotenv
 from aslite.db import get_papers_db
+from aslite.embedding import embed_text
 from contextlib import contextmanager
 import sqlite3, zlib, pickle, tempfile
 from tqdm import tqdm
@@ -14,27 +15,6 @@ from pinecone import Pinecone, ServerlessSpec
 
 load_dotenv()  # Loads from '.env' file 
 
-def embed_text(q_list, method="local"):
-    embeddings = []
-    if method == "gemini":
-        for q in tqdm(q_list):
-            model = 'models/embedding-001'
-            title = "The next generation of AI for developers and Google Workspace"
-            embedding = genai.embed_content(model=model,
-                                            content=q,
-                                            task_type="retrieval_document",
-                                            title=title)
-        embeddings.append(embedding)
-    elif method == "openai":
-        client = OpenAI()
-        model="text-embedding-3-small"
-        embeddings = client.embeddings.create(input = q_list, model=model).data
-    else:
-        model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-        print("Encodding")
-        embeddings = model.encode(q_list, show_progress_bar=True)
-
-    return embeddings
 
 def load_vectordb(vectordb_file):
     """ loads the features dict from disk """
@@ -104,12 +84,16 @@ def get_papers_db_embedding(pdb, keys=("summary",)):
     pc = Pinecone(api_key=os.getenv("PINECONE_API"))
     index = pc.Index("litrev")
     namespace = " ".join(keys)
-    idx_set = set(index.list(namespace=namespace))
+    idx_set = []
 
 
     pid_list, pid_text = [], []
-    to_upsert = []
-    print("Embedding")
+
+    for idx in index.list(namespace=namespace):
+        idx_set += idx
+
+    idx_set = set(idx_set)
+
     for pid, p in pdb.items():
         if pid not in idx_set:
             to_embed = ""
@@ -117,6 +101,7 @@ def get_papers_db_embedding(pdb, keys=("summary",)):
                 to_embed += "{}: {}\n".format(k, p[k])
 
             pid_list.append(pid)
+            #print(pid)
             pid_text.append(to_embed)
 
     if pid_text:
