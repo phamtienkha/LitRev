@@ -132,5 +132,8 @@ def get_papers_db_embedding(pdb, keys=("summary",), vectordb_file=VECTOR_DB_FILE
     if len(list_to_embed):
         # Sentence encocoding
         embedded = embed_text(list_to_embed)
+        embedded_dict = {}
+        for pid, embd in zip(list_pid, embedded):
+            embedded_dict[pid] = embd
 
-        safe_pickle_dump(embedded, vectordb_file)
+        safe_pickle_dump(embedded_dict, vectordb_file)
