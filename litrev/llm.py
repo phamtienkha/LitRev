@@ -1,5 +1,6 @@
 import torch
 from .query import search_rank
+from .query_vectordb import search_rank as search_rank_dl
 from dotenv import load_dotenv
 from .const import API_MODELS, NO_PAPER_RESPONSE
 from .utils import generate_response_api, detect_arxiv_id
@@ -88,10 +89,13 @@ def generate_response(q,
                 outputs.append(output)
         return outputs
 
-def get_summaries(q, top_k=30):
+def get_summaries(q, type="dl", top_k=30):
     # Search for papers
     pdb = get_papers_db()
-    pids, _ = search_rank(q)
+    if type == "rule":
+        pids, _ = search_rank(q)
+    else:
+        pids, _ = search_rank_dl(q)
     top_pids = pids[:top_k]
     
     # Shuffle the top_pids

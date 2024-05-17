@@ -22,7 +22,7 @@ def search_rank(q: str = ''):
     wordfreqs = np.load('./data/wordfreqs.npy', allow_pickle=True).item()
     imp_w_freqs = {w: wordfreqs.get(w, -1) for w in q_words}
     q_words = [w for w in q_words if imp_w_freqs[w] >= 3]  # words with freq >= 3
-    print(imp_w_freqs)
+    print(imp_w_freqs, q_words)
     if len(q_words) < 2:
         return [], []
     
@@ -32,6 +32,10 @@ def search_rank(q: str = ''):
 
     # search in the database
     pdb = get_papers_db()
+
+    raise Exception
+
+
     match = lambda s: sum(f" {s} ".lower().count(f" {qp} ") * 1/np.log(imp_w_freqs[qp]+1) for qp in q_words)
     match2 = lambda s: sum(f" {s} ".lower().count(f" {qp} ") * 1/5 for qp in q_bigrams)
     pairs = []
@@ -58,6 +62,9 @@ def search_rank(q: str = ''):
     pids = [p[1] for p in pairs]
     scores = [p[0] for p in pairs]
     return pids, scores
+
+def search_deeplearning(q: str= ''):
+    pass
 
 def shorten(text):
     if len(text.split()) <= 6:
