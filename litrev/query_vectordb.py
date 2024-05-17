@@ -27,9 +27,9 @@ def search_rank(q: str = '', top_k=10):
     namespace = "summary"
     queried = index.query(
         namespace=namespace,
-        vector=q_embed,
+        vector=q_embed.tolist(),
         top_k=top_k,
-    )
+    )["matches"]
     
     pids = [x["id"] for x in queried]
     scores = [x["score"] for x in queried]

@@ -2,7 +2,7 @@ import torch
 from .query import search_rank
 from .query_vectordb import search_rank as search_rank_dl
 from dotenv import load_dotenv
-from .const import API_MODELS, NO_PAPER_RESPONSE
+from .const import API_MODELS, NO_PAPER_RESPONSE, INDEX_TYPE
 from .utils import generate_response_api, detect_arxiv_id
 from aslite.db import get_papers_db
 import math
@@ -17,8 +17,9 @@ def generate_response(q,
                       k_search,
                       temperature=1, 
                       max_new_tokens=2048, 
-                      batch_size=1):
-    summaries = get_summaries(q, top_k=k_search)
+                      batch_size=1,
+                      index_type=INDEX_TYPE[1]):
+    summaries = get_summaries(q, top_k=k_search, index_type=index_type)
     print(f'There are {len(summaries)} papers found for your query: {q}\n')
     if len(summaries) == 0:
         return NO_PAPER_RESPONSE
@@ -89,13 +90,16 @@ def generate_response(q,
                 outputs.append(output)
         return outputs
 
-def get_summaries(q, type="dl", top_k=30):
+def get_summaries(q, index_type="dl", top_k=30):
     # Search for papers
     pdb = get_papers_db()
-    if type == "rule":
+    if index_type == INDEX_TYPE[0]:
+        print("Using rule-based indexing")
         pids, _ = search_rank(q)
     else:
-        pids, _ = search_rank_dl(q)
+        print("Using vectordb indexing")
+
+        pids, _ = search_rank_dl(q, top_k=top_k)
     top_pids = pids[:top_k]
     
     # Shuffle the top_pids
