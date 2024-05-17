@@ -1,5 +1,6 @@
 import os
 import pickle
+from dotenv import load_dotenv
 from aslite.db import get_papers_db
 from contextlib import contextmanager
 import sqlite3, zlib, pickle, tempfile
@@ -8,10 +9,10 @@ from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 import google.generativeai as genai
 import google.ai.generativelanguage as glm
+from pinecone import Pinecone, ServerlessSpec
 
-DATA_DIR = 'data'
-VECTOR_DB_FILE = os.path.join(DATA_DIR, 'vector_db.p')
 
+load_dotenv()  # Loads from '.env' file 
 
 def embed_text(q_list, method="local"):
     embeddings = []
@@ -99,37 +100,35 @@ def safe_pickle_dump(obj, fname):
         pickle.dump(obj, f, -1) # -1 specifies highest binary protocol
 
 
-def get_papers_db_embedding(pdb, keys=("summary",), vectordb_file=VECTOR_DB_FILE):
-    if os.path.exists(vectordb_file):
-        vector_db = load_vectordb(vectordb_file)
-    else:
-        vector_db = {}
-    
-    list_pid = []
-    list_to_embed = []
-    for pid, p in pdb.items():
-        if pid not in vector_db or keys not in vector_db[pid]:
-            if pid not in vector_db:
-                vector_db[pid] = {}
+def get_papers_db_embedding(pdb, keys=("summary",)):
+    pc = Pinecone(api_key=os.getenv("PINECONE_API"))
+    index = pc.Index("pinecone-index")
+    namespace = " ".join(keys)
+    idx_set = set(index.list(namespace=namespace))
 
+
+    pid_list, pid_text = [], []
+    to_upsert = []
+    print("Embedding")
+    for pid, p in pdb.items():
+        if pid not in idx_set:
             to_embed = ""
             for k in keys:
                 to_embed += "{}: {}\n".format(k, p[k])
 
-            list_pid.append(pid)
-            list_to_embed.append(to_embed)
-    
+            pid_list.append(pid)
+            pid_text.append(to_embed)
 
+    if pid_text:
+        embed_list = embed_text(pid_text)
+        for pid, embd in zip(pid_list, embed_list):
+            to_upsert.append({
+                "id": pid,
+                "values": embd
+            })
 
-    if len(list_to_embed):
-        # Sentence encocoding
-        embedded = embed_text(list_to_embed)
-        embedded_dict = {}
-        for pid, embd in zip(list_pid, embedded):
-            embedded_dict[pid] = embd
-
-        safe_pickle_dump(embedded_dict, vectordb_file)
-
+        index.upsert(vectors=to_upsert,
+                     namespace=namespace)
 
 if __name__ == "__main__":
     pdb = get_papers_db()
