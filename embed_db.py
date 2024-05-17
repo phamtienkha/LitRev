@@ -102,7 +102,7 @@ def safe_pickle_dump(obj, fname):
 
 def get_papers_db_embedding(pdb, keys=("summary",)):
     pc = Pinecone(api_key=os.getenv("PINECONE_API"))
-    index = pc.Index("pinecone-index")
+    index = pc.Index("litrev")
     namespace = " ".join(keys)
     idx_set = set(index.list(namespace=namespace))
 
