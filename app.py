@@ -1,5 +1,5 @@
 import asyncio
-from litrev.const import HELLO_MSG, API_MODELS
+from litrev.const import HELLO_MSG, API_MODELS, INDEX_TYPE
 from litrev.llm import generate_response
 from litrev.utils import load_model_tokenizer
 from litrev.response import summarize_content
@@ -22,6 +22,8 @@ with st.sidebar:
     st.title('Literature Review Chatbot')
     k_search = st.sidebar.slider('#papers', min_value=10, max_value=100, value=30, step=10)
     model_probs = st.sidebar.selectbox('Choose a model', API_MODELS, key='model_probs', index=3)
+    index_type = st.sidebar.selectbox('Choose a indexing type', INDEX_TYPE, key='index', index=1)
+
 
 # Store LLM generated responses
 if "messages" not in st.session_state.keys():
@@ -53,7 +55,8 @@ def get_response(prompt_input):
                                  model=model_gemini_1, 
                                  model_path='gemini-1',
                                  tokenizer=None, 
-                                 k_search=k_search)
+                                 k_search=k_search,
+                                 index_type=index_type)
     probs = summarize_content(response=response,
                               q=prompt_input, 
                               model=model,
