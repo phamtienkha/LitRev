@@ -107,7 +107,7 @@ def get_papers_db_embedding(pdb, keys=("summary",)):
     print(len(pid_text), len(pdb))
     if pid_text:
         embed_list = embed_text(pid_text)
-        to_upsert = []
+        to_upsert = [[]]
         for pid, embd in zip(pid_list, embed_list):
             to_upsert[-1].append({
                 "id": pid,
